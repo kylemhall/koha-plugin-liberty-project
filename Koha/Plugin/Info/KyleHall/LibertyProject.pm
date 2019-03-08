@@ -7,19 +7,21 @@ use Modern::Perl;
 use base qw(Koha::Plugins::Base);
 
 ## We will also need to include any Koha libraries we want to access
-use C4::Context;
 use C4::Auth;
-use Koha::Patron;
+use C4::Context;
+use Koha::Account::Lines;
+use Koha::Account;
 use Koha::DateUtils;
 use Koha::Libraries;
 use Koha::Patron::Categories;
-use Koha::Account;
-use Koha::Account::Lines;
-use MARC::Record;
+use Koha::Patron;
+
 use Cwd qw(abs_path);
+use LWP::UserAgent;
+use MARC::Batch;
+use MARC::Record;
 use Mojo::JSON qw(decode_json);
 use URI::Escape qw(uri_unescape);
-use LWP::UserAgent;
 
 ## Here we set our plugin version
 our $VERSION = "{VERSION}";
@@ -163,21 +165,18 @@ sub tool_step2 {
     warn "COVES: $ebooks_file";
 
     my $ebooks_tmpdir = File::Temp::tempdir( CLEANUP => 1 );
+    my $marc_tmpdir   = File::Temp::tempdir( CLEANUP => 1 );
 
     warn "ebooks_tmpdir = $ebooks_tmpdir";
-    my $filesuffix;
-    if ( $ebooks_filename =~ m/(\..+)$/i ) {
-        $filesuffix = $1;
-    }
-    my ( $ctfh, $ebooks_tempfile ) =
-      File::Temp::tempfile( SUFFIX => $filesuffix, UNLINK => 1 );
+
+    # Write ebooks zip file to filesystem
+    my ( $etfh, $ebooks_tempfile ) =
+      File::Temp::tempfile( SUFFIX => '.zip', UNLINK => 1 );
     warn "ebooks_tempfile = $ebooks_tempfile";
-    my ( @directories, $results );
 
     $errors->{'COVERS_NOT_ZIP'} = 1 if ( $ebooks_filename !~ /\.zip$/i );
     $errors->{'NO_WRITE_TEMP'}       = 1 unless ( -w $ebooks_tmpdir );
     $errors->{'EMPTY_UPLOAD_COVERS'} = 1 unless ( length($ebooks_file) > 0 );
-    $errors->{'EMPTY_UPLOAD_MARC'}   = 1 unless ( length($marc_file) > 0 );
 
     if (%$errors) {
         $template->param( errors => $errors );
@@ -186,9 +185,11 @@ sub tool_step2 {
     }
 
     while (<$ebooks_file>) {
-        print $ctfh $_;
+        print $etfh $_;
     }
-    close $ctfh;
+    close $etfh;
+
+    # Unzip ebooks zip file
     qx/unzip $ebooks_tempfile -d $ebooks_tmpdir/;
     my $exit_code = $?;
     unless ( $exit_code == 0 ) {
@@ -213,6 +214,33 @@ sub tool_step2 {
     }
     closedir(DIR);
 
+    # Write MARC file to filesystem
+    my ( $mtfh, $marc_tempfile ) =
+      File::Temp::tempfile( SUFFIX => '.mrc', UNLINK => 1 );
+    warn "marc_tempfile = $marc_tempfile";
+
+    $errors->{'MARC_NOT_MRC'} = 1 if ( $marc_filename !~ /\.mrc$/i );
+    $errors->{'NO_WRITE_TEMP'}       = 1 unless ( -w $marc_tmpdir );
+    $errors->{'EMPTY_UPLOAD_MARC'}   = 1 unless ( length($marc_file) > 0 );
+
+    if (%$errors) {
+        $template->param( errors => $errors );
+        $self->output_html( $template->output() );
+        exit;
+    }
+
+    while (<$marc_file>) {
+        print $mtfh $_;
+    }
+    close $mtfh;
+    
+    warn "CHECKING MARC: $marc_tempfile";
+    my $batch = MARC::Batch->new( 'USMARC', $marc_tempfile );
+    while ( my $marc = $batch->next ) {
+        warn "TITLE: " .  $marc->subfield(245,"a");
+    }
+
+    # No errors!
     $template->param( errors => $errors );
     $self->output_html( $template->output() );
 }
