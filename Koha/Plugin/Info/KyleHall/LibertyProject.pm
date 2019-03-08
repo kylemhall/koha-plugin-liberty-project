@@ -156,27 +156,27 @@ sub tool_step2 {
 
     my $marc_file       = $cgi->param('uploadMarcFile');
     my $marc_filename   = $cgi->param('uploadMarcFile');
-    my $covers_file     = $cgi->param('uploadCoversFile');
-    my $covers_filename = $cgi->param('uploadCoversFile');
+    my $ebooks_file     = $cgi->param('uploadEbooksFile');
+    my $ebooks_filename = $cgi->param('uploadEbooksFile');
 
     warn "MARC: $marc_file";
-    warn "COVES: $covers_file";
+    warn "COVES: $ebooks_file";
 
-    my $dirname = File::Temp::tempdir( CLEANUP => 1 );
+    my $ebooks_tmpdir = File::Temp::tempdir( CLEANUP => 1 );
 
-    warn "dirname = $dirname";
+    warn "ebooks_tmpdir = $ebooks_tmpdir";
     my $filesuffix;
-    if ( $covers_filename =~ m/(\..+)$/i ) {
+    if ( $ebooks_filename =~ m/(\..+)$/i ) {
         $filesuffix = $1;
     }
-    my ( $ctfh, $covers_tempfile ) =
+    my ( $ctfh, $ebooks_tempfile ) =
       File::Temp::tempfile( SUFFIX => $filesuffix, UNLINK => 1 );
-    warn "covers_tempfile = $covers_tempfile";
+    warn "ebooks_tempfile = $ebooks_tempfile";
     my ( @directories, $results );
 
-    $errors->{'COVERS_NOT_ZIP'} = 1 if ( $covers_filename !~ /\.zip$/i );
-    $errors->{'NO_WRITE_TEMP'}       = 1 unless ( -w $dirname );
-    $errors->{'EMPTY_UPLOAD_COVERS'} = 1 unless ( length($covers_file) > 0 );
+    $errors->{'COVERS_NOT_ZIP'} = 1 if ( $ebooks_filename !~ /\.zip$/i );
+    $errors->{'NO_WRITE_TEMP'}       = 1 unless ( -w $ebooks_tmpdir );
+    $errors->{'EMPTY_UPLOAD_COVERS'} = 1 unless ( length($ebooks_file) > 0 );
     $errors->{'EMPTY_UPLOAD_MARC'}   = 1 unless ( length($marc_file) > 0 );
 
     if (%$errors) {
@@ -185,33 +185,33 @@ sub tool_step2 {
         exit;
     }
 
-    while (<$covers_file>) {
+    while (<$ebooks_file>) {
         print $ctfh $_;
     }
     close $ctfh;
-    qx/unzip $covers_tempfile -d $dirname/;
+    qx/unzip $ebooks_tempfile -d $ebooks_tmpdir/;
     my $exit_code = $?;
     unless ( $exit_code == 0 ) {
-        $errors->{'COVERS_UNZIP_FAIL'} = $covers_filename;
+        $errors->{'COVERS_UNZIP_FAIL'} = $ebooks_filename;
         $template->param( errors => $errors );
         $self->output_html( $template->output() );
         exit;
     }
-    push @directories, "$dirname";
-    foreach my $recursive_dir (@directories) {
-        opendir RECDIR, $recursive_dir;
-        while ( my $entry = readdir RECDIR ) {
-            push @directories, "$recursive_dir/$entry"
-              if ( -d "$recursive_dir/$entry" and $entry !~ /^\./ );
-            warn "$recursive_dir/$entry";
+
+    # Validate PDFs
+    opendir( DIR, $ebooks_tmpdir ) or die "Could not open $ebooks_tmpdir\n";
+    while ( my $filename = readdir(DIR) ) {
+        next unless $filename =~ /\.pdf$/;
+        warn "$filename\n";
+        my $output = qx|pdftotext $ebooks_tmpdir/$filename /dev/null|;
+        if ( $output ) {
+            warn "PDF file $filename appears to be corrupted";
+            $errors->{'PDF_INVALID'}->{$filename} = $output;
+        } else {
+            warn "PDF file $filename appears to be cromulent!";
         }
-        closedir RECDIR;
     }
-    foreach my $dir (@directories) {
-#        $results = handle_dir( $dir, $filesuffix, $template );
-#        $handled++ if $results == 1;
-    }
-    warn "DIRS: " . Data::Dumper::Dumper( \@directories );
+    closedir(DIR);
 
     $template->param( errors => $errors );
     $self->output_html( $template->output() );

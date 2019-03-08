@@ -21,8 +21,8 @@
         </li>
 
         <li class="required">
-            <label for="uploadCoversFile">Covers Zip File: </label>
-            <input type="file" id="uploadCoversFile" name="uploadCoversFile" class="required" required="required" />
+            <label for="uploadEbooksFile">E-books Zip File: </label>
+            <input type="file" id="uploadEbooksFile" name="uploadEbooksFile" class="required" required="required" />
             <span class="required">Required</span>
         </li>
 
