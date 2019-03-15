@@ -10,18 +10,47 @@
 
 <div id="doc3">
 
-    <p>Hello [% victim.firstname %]! Your new name is Bob!</p>
+[% IF errors.keys %]
+    <h2>Errors:</h2>
 
-    [% IF victims %]
-        <h3>Previous victims:</h3>
+    <ul>
+        [% FOREACH e IN errors.keys %]
+            [% SWITCH e %]
+                [% CASE 'COVERS_NOT_ZIP' %]
+                    <li>Covers file is not a Zip file.</li>
+                [% CASE 'NO_WRITE_TEMP' %]
+                    <li>Unable to write to temp directory.</li>
+                [% CASE 'EMPTY_UPLOAD_COVERS' %]
+                    <li>Covers file is empty.</li>
+                [% CASE 'COVERS_UNZIP_FAIL' %]
+                    <li>Unzip of covers file failed.</li>
+                [% CASE 'PDF_INVALID' %]
+                    <li>One of more PDFs are invalide: <pre>[% errors.$e %]</pre></li>
+                [% CASE 'MARC_NOT_MRC' %]
+                    <li>MARC file does not end in <strong>.mrc</strong></li>
+                [% CASE 'EMPTY_UPLOAD_MARC' %]
+                    <li>MARC file is empty.</li>
+                [% CASE %] # default
+                    [% e %]
+            [% END %]
+        [% END %]
+    </ul>
+[% END %]
 
+<h2>PDFs processed</h2>
+<ul>
+[% FOREACH key IN pdfs.keys %]
+    <li>
+        [% SET pdf = pdfs.$key %]
         <ul>
-            [% FOREACH v IN victims %]
-                <li><a href="/cgi-bin/koha/members/moremember.pl?borrowernumber=[% v.borrowernumber %]">[% v.firstname %] [% v.surname %]</a></li>
+            <li>Filename: [% pdf.filename %]</li>
+            <li>Valid: [% IF pdf.is_valid %]Yes[% ELSE %]No[% END %]</li>
+            [% UNLESS pdf.is_valid %]
+                <li>ERROR: [% pdf.is_valid_error %]</li>
             [% END %]
         </ul>
-    [% ELSE %]
-        <p>You are the first victim to click the button!</p>
-    [% END %]
+    </li>
+[% END %]
+</ul>
 
 [% INCLUDE 'intranet-bottom.inc' %]

@@ -200,21 +200,29 @@ sub tool_step2 {
     }
 
     # Validate PDFs
+    my $pdfs;
     opendir( DIR, $ebooks_tmpdir ) or die "Could not open $ebooks_tmpdir\n";
     while ( my $filename = readdir(DIR) ) {
         next unless $filename =~ /\.pdf$/;
+
+        $pdfs->{$filename}->{filename} = $filename;
+
         warn "$filename\n";
         my $output = qx|pdftotext $ebooks_tmpdir/$filename /dev/null|;
         if ( $output ) {
             warn "PDF file $filename appears to be corrupted";
             $errors->{'PDF_INVALID'}->{$filename} = $output;
+            $pdfs->{$filename}->{is_valid} = 0;
+            $pdfs->{$filename}->{is_valid_error} = $output;
         } else {
+            $pdfs->{$filename}->{is_valid} = 1;
             warn "PDF file $filename appears to be cromulent!";
         }
     }
     closedir(DIR);
 
     # Write MARC file to filesystem
+    my $records;
     my ( $mtfh, $marc_tempfile ) =
       File::Temp::tempfile( SUFFIX => '.mrc', UNLINK => 1 );
     warn "marc_tempfile = $marc_tempfile";
@@ -241,7 +249,7 @@ sub tool_step2 {
     }
 
     # No errors!
-    $template->param( errors => $errors );
+    $template->param( errors => $errors, pdfs => $pdfs, records => $records );
     $self->output_html( $template->output() );
 }
 
