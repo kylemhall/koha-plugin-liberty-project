@@ -197,17 +197,18 @@ sub tool_step2 {
         next unless $filename;
         next unless $filename =~ /\.pdf$/;
 
-        $pdfs->{$filename}->{filename} = $filename;
+        $pdfs->{$filename}->{filename}   = $filename;
         $pdfs->{$filename}->{has_record} = 0;
 
         warn "FILENAME: $filename";
         my $output = qx|pdftotext $ebooks_tmpdir/$filename /dev/null|;
-        if ( $output ) {
+        if ($output) {
             warn "PDF file $filename appears to be corrupted";
             $errors->{'PDF_INVALID'}->{$filename} = $output;
-            $pdfs->{$filename}->{is_valid} = 0;
-            $pdfs->{$filename}->{is_valid_error} = $output;
-        } else {
+            $pdfs->{$filename}->{is_valid}        = 0;
+            $pdfs->{$filename}->{is_valid_error}  = $output;
+        }
+        else {
             $pdfs->{$filename}->{is_valid} = 1;
             warn "PDF file $filename appears to be cromulent!";
         }
@@ -221,8 +222,8 @@ sub tool_step2 {
     warn "marc_tempfile = $marc_tempfile";
 
     $errors->{'MARC_NOT_MRC'} = 1 if ( $marc_filename !~ /\.mrc$/i );
-    $errors->{'NO_WRITE_TEMP'}       = 1 unless ( -w $marc_tmpdir );
-    $errors->{'EMPTY_UPLOAD_MARC'}   = 1 unless ( length($marc_file) > 0 );
+    $errors->{'NO_WRITE_TEMP'}     = 1 unless ( -w $marc_tmpdir );
+    $errors->{'EMPTY_UPLOAD_MARC'} = 1 unless ( length($marc_file) > 0 );
 
     if (%$errors) {
         $template->param( errors => $errors );
@@ -234,30 +235,32 @@ sub tool_step2 {
         print $mtfh $_;
     }
     close $mtfh;
-    
+
     warn "CHECKING MARC: $marc_tempfile";
     my $batch = MARC::Batch->new( 'USMARC', $marc_tempfile );
     while ( my $marc = $batch->next ) {
         my $record = { marc => $marc };
-        $record->{title} = $marc->subfield('245','a');
-        $record->{isbn} = $marc->subfield('020', 'a');
+        $record->{title} = $marc->subfield( '245', 'a' );
+        $record->{isbn}  = $marc->subfield( '020', 'a' );
 
         my $filename = $record->{isbn} . ".pdf";
         $pdfs->{$filename}->{has_record} = 1;
 
         $record->{filename} = $filename;
-        $record->{pdf} = $pdfs->{$filename};
+        $record->{pdf}      = $pdfs->{$filename};
         warn "FOUND $record->{title} / $record->{isbn} : $record->{filename} => $record->{pdf}";
 
         if ( $record->{pdf}->{is_valid} ) {
             warn "IMPORTING RECORD";
-            my ($biblionumber,$biblioitemnumber) = AddBiblio($record->{marc}, q{});
+            my ( $biblionumber, $biblioitemnumber ) =
+              AddBiblio( $record->{marc}, q{} );
             $record->{biblionumber} = $biblionumber;
             warn "IMPORTED WITH BIBLIONUMBER $biblionumber";
-        } else {
+        }
+        else {
             warn "RECORD HAS INVALID PDF, SKIPPING IMPORT OF RECORD";
         }
-        
+
         push( @records, $record );
     }
 
