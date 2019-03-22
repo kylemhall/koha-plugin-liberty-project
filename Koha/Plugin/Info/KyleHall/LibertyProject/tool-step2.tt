@@ -37,20 +37,56 @@
     </ul>
 [% END %]
 
+<h2>Records processed</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Title</th>
+            <th>ISBN</th>
+            <th>Filename</th>
+            <th>Valid file?</th>
+            <th>Imported?</th>
+            <th>Biblionumber</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        [% FOREACH r IN records %]
+            <tr>
+                <td>[% r.title %]</td>
+                <td>[% r.isbn %]</td>
+                <td>[% r.filename %]</td>
+                <td>[% IF r.pdf.is_valid %]Yes[% ELSE %]No[% END %]</td>
+                <td>[% IF r.biblionumber %]Yes[% ELSE %]No[% END %]</td>
+                <td>[% r.biblionumber %]</td>
+            </td>
+        [% END %]
+    </tbody>
+</table>
+
 <h2>PDFs processed</h2>
-<ul>
-[% FOREACH key IN pdfs.keys %]
-    <li>
-        [% SET pdf = pdfs.$key %]
-        <ul>
-            <li>Filename: [% pdf.filename %]</li>
-            <li>Valid: [% IF pdf.is_valid %]Yes[% ELSE %]No[% END %]</li>
-            [% UNLESS pdf.is_valid %]
-                <li>ERROR: [% pdf.is_valid_error %]</li>
-            [% END %]
-        </ul>
-    </li>
-[% END %]
-</ul>
+<table>
+    <thead>
+        <tr>
+            <th>Filename</th>
+            <th>Valid?</th>
+            <th>Has record?</th>
+            <th>Error</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        [% FOREACH key IN pdfs.keys %]
+            <tr>
+                [% SET pdf = pdfs.$key %]
+
+                <td>[% key %]</td>
+                <td>[% IF pdf.is_valid %]Yes[% ELSE %]No[% END %]</td>
+                <td>[% pdf.has_record %]</td>
+                <td>[% pdf.is_valid_error %]</td>
+            </tr>
+        [% END %]
+    </tbody>
+</table>
 
 [% INCLUDE 'intranet-bottom.inc' %]

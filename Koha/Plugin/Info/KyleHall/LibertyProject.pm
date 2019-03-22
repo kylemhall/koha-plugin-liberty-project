@@ -9,19 +9,10 @@ use base qw(Koha::Plugins::Base);
 ## We will also need to include any Koha libraries we want to access
 use C4::Auth;
 use C4::Context;
-use Koha::Account::Lines;
-use Koha::Account;
-use Koha::DateUtils;
-use Koha::Libraries;
-use Koha::Patron::Categories;
-use Koha::Patron;
+use C4::Biblio qw( AddBiblio );
 
-use Cwd qw(abs_path);
-use LWP::UserAgent;
 use MARC::Batch;
 use MARC::Record;
-use Mojo::JSON qw(decode_json);
-use URI::Escape qw(uri_unescape);
 
 ## Here we set our plugin version
 our $VERSION = "{VERSION}";
@@ -203,11 +194,13 @@ sub tool_step2 {
     my $pdfs;
     opendir( DIR, $ebooks_tmpdir ) or die "Could not open $ebooks_tmpdir\n";
     while ( my $filename = readdir(DIR) ) {
+        next unless $filename;
         next unless $filename =~ /\.pdf$/;
 
         $pdfs->{$filename}->{filename} = $filename;
+        $pdfs->{$filename}->{has_record} = 0;
 
-        warn "$filename\n";
+        warn "FILENAME: $filename";
         my $output = qx|pdftotext $ebooks_tmpdir/$filename /dev/null|;
         if ( $output ) {
             warn "PDF file $filename appears to be corrupted";
@@ -222,7 +215,7 @@ sub tool_step2 {
     closedir(DIR);
 
     # Write MARC file to filesystem
-    my $records;
+    my @records;
     my ( $mtfh, $marc_tempfile ) =
       File::Temp::tempfile( SUFFIX => '.mrc', UNLINK => 1 );
     warn "marc_tempfile = $marc_tempfile";
@@ -245,11 +238,31 @@ sub tool_step2 {
     warn "CHECKING MARC: $marc_tempfile";
     my $batch = MARC::Batch->new( 'USMARC', $marc_tempfile );
     while ( my $marc = $batch->next ) {
-        warn "TITLE: " .  $marc->subfield(245,"a");
+        my $record = { marc => $marc };
+        $record->{title} = $marc->subfield('245','a');
+        $record->{isbn} = $marc->subfield('020', 'a');
+
+        my $filename = $record->{isbn} . ".pdf";
+        $pdfs->{$filename}->{has_record} = 1;
+
+        $record->{filename} = $filename;
+        $record->{pdf} = $pdfs->{$filename};
+        warn "FOUND $record->{title} / $record->{isbn} : $record->{filename} => $record->{pdf}";
+
+        if ( $record->{pdf}->{is_valid} ) {
+            warn "IMPORTING RECORD";
+            my ($biblionumber,$biblioitemnumber) = AddBiblio($record->{marc}, q{});
+            $record->{biblionumber} = $biblionumber;
+            warn "IMPORTED WITH BIBLIONUMBER $biblionumber";
+        } else {
+            warn "RECORD HAS INVALID PDF, SKIPPING IMPORT OF RECORD";
+        }
+        
+        push( @records, $record );
     }
 
     # No errors!
-    $template->param( errors => $errors, pdfs => $pdfs, records => $records );
+    $template->param( errors => $errors, pdfs => $pdfs, records => \@records );
     $self->output_html( $template->output() );
 }
 
