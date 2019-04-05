@@ -10,25 +10,24 @@
 
 <div id="doc3">
     <form method="post" enctype="multipart/form-data" id="upload_form">
-    <fieldset class="rows">
-        <input type="hidden" name="class" value="[% CLASS %]"/>
-        <input type="hidden" name="method" value="[% METHOD %]"/>
+        <fieldset class="rows">
+            <input type="hidden" name="class" value="[% CLASS %]"/>
+            <input type="hidden" name="method" value="[% METHOD %]"/>
 
-        <li class="required">
-            <label for="uploadMarcFile">MARC File: </label>
-            <input type="file" id="uploadMarcFile" name="uploadMarcFile" class="required" required="required" />
-            <span class="required">Required</span>
-        </li>
+            <li class="required">
+                <label for="uploadMarcFile">MARC File: </label>
+                <input type="file" id="uploadMarcFile" name="uploadMarcFile" class="required" required="required" />
+                <span class="required">Required</span>
+            </li>
 
-        <li class="required">
-            <label for="uploadEbooksFile">E-books Zip File: </label>
-            <input type="file" id="uploadEbooksFile" name="uploadEbooksFile" class="required" required="required" />
-            <span class="required">Required</span>
-        </li>
+            <li class="required">
+                <label for="uploadEbooksFile">E-books Zip File: </label>
+                <input type="file" id="uploadEbooksFile" name="uploadEbooksFile" class="required" required="required" />
+                <span class="required">Required</span>
+            </li>
 
-        <input name="submitted" type="submit" value="Click me" />
-    </fieldset>
+            <input name="step" type="hidden" value="2" />
+            <input name="submitted" type="submit" value="Validate files" />
+        </fieldset>
     </form>
-
-
 [% INCLUDE 'intranet-bottom.inc' %]

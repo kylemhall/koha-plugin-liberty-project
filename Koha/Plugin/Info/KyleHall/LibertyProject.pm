@@ -57,11 +57,14 @@ sub tool {
 
     my $cgi = $self->{'cgi'};
 
-    unless ( $cgi->param('submitted') ) {
+    my $step = $cgi->param('step') || '1';
+
+    if ( $step eq '1' ) {
         $self->tool_step1();
-    }
-    else {
+    } elsif ( $step eq '2' ) {
         $self->tool_step2();
+    } elsif ( $step eq '3' ) {
+        $self->tool_step3();
     }
 
 }
@@ -162,7 +165,7 @@ sub tool_step2 {
 
     # Write ebooks zip file to filesystem
     my ( $etfh, $ebooks_tempfile ) =
-      File::Temp::tempfile( SUFFIX => '.zip', UNLINK => 1 );
+      File::Temp::tempfile( SUFFIX => '.zip', UNLINK => 0 );
     warn "ebooks_tempfile = $ebooks_tempfile";
 
     $errors->{'COVERS_NOT_ZIP'} = 1 if ( $ebooks_filename !~ /\.zip$/i );
@@ -191,32 +194,9 @@ sub tool_step2 {
     }
 
     # Validate PDFs
-    my $pdfs;
-    opendir( DIR, $ebooks_tmpdir ) or die "Could not open $ebooks_tmpdir\n";
-    while ( my $filename = readdir(DIR) ) {
-        next unless $filename;
-        next unless $filename =~ /\.pdf$/;
-
-        $pdfs->{$filename}->{filename}   = $filename;
-        $pdfs->{$filename}->{has_record} = 0;
-
-        warn "FILENAME: $filename";
-        my $output = qx|pdftotext $ebooks_tmpdir/$filename /dev/null|;
-        if ($output) {
-            warn "PDF file $filename appears to be corrupted";
-            $errors->{'PDF_INVALID'}->{$filename} = $output;
-            $pdfs->{$filename}->{is_valid}        = 0;
-            $pdfs->{$filename}->{is_valid_error}  = $output;
-        }
-        else {
-            $pdfs->{$filename}->{is_valid} = 1;
-            warn "PDF file $filename appears to be cromulent!";
-        }
-    }
-    closedir(DIR);
+    my $pdfs = $self->validate_pdfs( { dir => $ebooks_tmpdir, errors => $errors } );
 
     # Write MARC file to filesystem
-    my @records;
     my ( $mtfh, $marc_tempfile ) =
       File::Temp::tempfile( SUFFIX => '.mrc', UNLINK => 1 );
     warn "marc_tempfile = $marc_tempfile";
@@ -236,18 +216,51 @@ sub tool_step2 {
     }
     close $mtfh;
 
+    # Rename to prevent deletion
+    my $dir = File::Temp::tempdir( CLEANUP => 0 );
+    my $new_file = "$dir/$marc_file";
+    rename( $marc_tempfile, $new_file );
+    $marc_tempfile = $new_file;
+
     warn "CHECKING MARC: $marc_tempfile";
-    my $batch = MARC::Batch->new( 'USMARC', $marc_tempfile );
-    while ( my $marc = $batch->next ) {
-        my $record = { marc => $marc };
-        $record->{title} = $marc->subfield( '245', 'a' );
-        $record->{isbn}  = $marc->subfield( '020', 'a' );
+    my $records = $self->validate_marc( { file => $marc_tempfile, pdfs => $pdfs } );
 
-        my $filename = $record->{isbn} . ".pdf";
-        $pdfs->{$filename}->{has_record} = 1;
+    $template->param(
+        step      => 2,
+        errors    => $errors,
+        pdfs      => $pdfs,
+        records   => $records,
+        marc_file => $marc_tempfile,
+        pdfs_dir  => $ebooks_tmpdir,
+    );
+    $self->output_html( $template->output() );
+}
 
-        $record->{filename} = $filename;
-        $record->{pdf}      = $pdfs->{$filename};
+sub tool_step3 {
+    my ( $self, $args ) = @_;
+    my $cgi = $self->{'cgi'};
+
+    my $errors = {};
+
+    my $template = $self->get_template( { file => 'tool-step2.tt' } );
+
+    my $marc_file = $cgi->param('marc_file');
+    my $pdfs_dir  = $cgi->param('pdfs_dir');
+    warn "MARC FILE: $marc_file";
+    warn "PDFS DIR: $pdfs_dir";
+
+    my $pdfs = $self->validate_pdfs( { dir => $pdfs_dir, errors => $errors } );
+
+    # Write MARC file to filesystem
+    if (%$errors) {
+        $template->param( errors => $errors );
+        $self->output_html( $template->output() );
+        exit;
+    }
+
+    my $records = $self->validate_marc( { file => $marc_file, pdfs => $pdfs } );
+
+    foreach my $record ( @$records ) {
         warn "FOUND $record->{title} / $record->{isbn} : $record->{filename} => $record->{pdf}";
 
         if ( $record->{pdf}->{is_valid} ) {
@@ -261,12 +274,83 @@ sub tool_step2 {
             warn "RECORD HAS INVALID PDF, SKIPPING IMPORT OF RECORD";
         }
 
+#        push( @records, $record );
+    }
+
+    warn "UNLINK $marc_file";
+    unlink $marc_file;
+    warn "REMOVE TREE $pdfs_dir";
+    File::Path::remove_tree( $pdfs_dir );
+
+    $template->param(
+        step      => 3,
+        errors    => $errors,
+        pdfs      => $pdfs,
+        records   => $records,
+    );
+    $self->output_html( $template->output() );
+}
+
+sub validate_marc {
+    my ( $self, $args ) = @_;
+    my $file = $args->{file}; 
+    my $pdfs = $args->{pdfs};
+
+    warn "FILE: $file";
+    warn "PDFS: " . Data::Dumper::Dumper( $pdfs );
+
+    my $batch = MARC::Batch->new( 'USMARC', $file );
+    my @records;
+    while ( my $marc = $batch->next ) {
+        my $record = { marc => $marc };
+        $record->{title} = $marc->subfield( '245', 'a' );
+        $record->{isbn}  = $marc->subfield( '020', 'a' );
+
+        my $filename = $record->{isbn} . ".pdf";
+        warn "FILENAME: $filename";
+        $pdfs->{$filename}->{has_record} = 1;
+
+        $record->{filename} = $filename;
+        $record->{pdf}      = $pdfs->{$filename};
+        warn "FOUND $record->{title} / $record->{isbn} : $record->{filename} => $record->{pdf}";
+
         push( @records, $record );
     }
 
-    # No errors!
-    $template->param( errors => $errors, pdfs => $pdfs, records => \@records );
-    $self->output_html( $template->output() );
+    return \@records;
+}
+
+sub validate_pdfs {
+    my ( $self, $args ) = @_;
+    my $dir    = $args->{dir};
+    my $errors = $args->{errors};
+
+    # Validate PDFs
+    my $pdfs;
+    opendir( DIR, $dir ) or die "Could not open $dir\n";
+    while ( my $filename = readdir(DIR) ) {
+        next unless $filename;
+        next unless $filename =~ /\.pdf$/;
+
+        $pdfs->{$filename}->{filename}   = $filename;
+        $pdfs->{$filename}->{has_record} = 0;
+
+        warn "FILENAME: $filename";
+        my $output = qx|pdftotext $dir/$filename /dev/null|;
+        if ($output) {
+            warn "PDF file $filename appears to be corrupted";
+            $errors->{'PDF_INVALID'}->{$filename} = $output;
+            $pdfs->{$filename}->{is_valid}        = 0;
+            $pdfs->{$filename}->{is_valid_error}  = $output;
+        }
+        else {
+            $pdfs->{$filename}->{is_valid} = 1;
+            warn "PDF file $filename appears to be cromulent!";
+        }
+    }
+    closedir(DIR);
+
+    return $pdfs;
 }
 
 1;

@@ -45,8 +45,10 @@
             <th>ISBN</th>
             <th>Filename</th>
             <th>Valid file?</th>
-            <th>Imported?</th>
-            <th>Biblionumber</th>
+            [% IF step == 3 %]
+                <th>Imported?</th>
+                <th>Biblionumber</th>
+            [% END %]
         </tr>
     </thead>
 
@@ -57,8 +59,10 @@
                 <td>[% r.isbn %]</td>
                 <td>[% r.filename %]</td>
                 <td>[% IF r.pdf.is_valid %]Yes[% ELSE %]No[% END %]</td>
-                <td>[% IF r.biblionumber %]Yes[% ELSE %]No[% END %]</td>
-                <td>[% r.biblionumber %]</td>
+                [% IF step == 3 %]
+                    <td>[% IF r.biblionumber %]Yes[% ELSE %]No[% END %]</td>
+                    <td>[% r.biblionumber %]</td>
+                [% END %]
             </td>
         [% END %]
     </tbody>
@@ -88,5 +92,20 @@
         [% END %]
     </tbody>
 </table>
+
+<p/>
+
+[% IF step == 2 %]
+    <form method="post" enctype="multipart/form-data" id="upload_form">
+        <input type="hidden" name="class"  value="[% CLASS %]"/>
+        <input type="hidden" name="method" value="[% METHOD %]"/>
+
+        <input type="hidden" name="marc_file" value="[% marc_file %]"/>
+        <input type="hidden" name="pdfs_dir"  value="[% pdfs_dir %]"/>
+        <input type="hidden" name="step"      value="3"/>
+
+        <input name="submitted" type="submit" value="Commit files" />
+    </form>
+[% END %]
 
 [% INCLUDE 'intranet-bottom.inc' %]
