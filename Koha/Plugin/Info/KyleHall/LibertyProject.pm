@@ -9,6 +9,7 @@ use base qw(Koha::Plugins::Base);
 ## We will also need to include any Koha libraries we want to access
 use C4::Auth;
 use C4::Context;
+use C4::Output;
 use C4::Biblio qw( AddBiblio );
 
 use MARC::Batch;
@@ -351,6 +352,22 @@ sub validate_pdfs {
     closedir(DIR);
 
     return $pdfs;
+}
+
+# From newer versions of Koha/Plugins/Base.pm
+=head2 output_html
+
+    $self->output_html( $data, $status, $extra_options );
+
+Outputs $data setting the right headers for HTML content.
+
+Note: this is a wrapper function for C4::Output::output_with_http_headers
+
+=cut
+
+sub output_html {
+    my ( $self, $data, $status, $extra_options ) = @_;
+    C4::Output::output_with_http_headers( $self->{cgi}, undef, $data, 'html', $status, $extra_options );
 }
 
 1;
