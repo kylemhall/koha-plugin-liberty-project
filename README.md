@@ -19,3 +19,6 @@ To set up the Koha plugin system you must first make some changes to your instal
 * Restart your webserver
 
 Once set up is complete you will need to alter your UseKohaPlugins system preference. On the Tools page you will see the Tools Plugins and on the Reports page you will see the Reports Plugins.
+
+Add `www-data = (root) NOPASSWD: /usr/local/bin/docker_run_liberty_uploader.sh` to sudoers as well as an alias for the script.
+

@@ -248,11 +248,11 @@ sub tool_step3 {
     my $marc_file = $cgi->param('marc_file');
     my $pdfs_dir  = $cgi->param('pdfs_dir');
 
-    my $output = qx{cp $marc_file $pdfs_dir/marc.txt};
-    warn "COPY OUTPUT: $output";
-    $output = qx{docker run --rm -v $pdfs_dir:/ORIGIN -v $tmp_:/DESTINATION -v /home/kohaclone/liberty-upload:/app -w /app openjdk:8 /app/command.sh /ORIGIN};
-    warn "DOCKER OUTPUT: $output";
-## TODO: point $marc_file to new MARC file
+    my $tmp_dir = File::Temp::tempdir( CLEANUP => 1 );
+
+    qx{mv $marc_file $pdfs_dir/.};
+    my $output = qx{/usr/local/bin/docker_run_liberty_uploader.sh $pdfs_dir $tmp_dir};
+    warn "LIBERTY UPLOADER OUTPUT: $output";
 
     warn "MARC FILE: $marc_file";
     warn "PDFS DIR: $pdfs_dir";
