@@ -1,4 +1,5 @@
 package Koha::Plugin::Info::KyleHall::LibertyProject;
+use Carp::Always;
 
 ## It's good practice to use Modern::Perl
 use Modern::Perl;
@@ -159,8 +160,8 @@ sub tool_step2 {
     warn "MARC: $marc_file";
     warn "COVES: $ebooks_file";
 
-    my $ebooks_tmpdir = File::Temp::tempdir( CLEANUP => 1 );
-    my $marc_tmpdir   = File::Temp::tempdir( CLEANUP => 1 );
+    my $ebooks_tmpdir = File::Temp::tempdir( CLEANUP => 0 );
+    my $marc_tmpdir   = File::Temp::tempdir( CLEANUP => 0 );
 
     warn "ebooks_tmpdir = $ebooks_tmpdir";
 
@@ -185,7 +186,8 @@ sub tool_step2 {
     close $etfh;
 
     # Unzip ebooks zip file
-    qx/unzip $ebooks_tempfile -d $ebooks_tmpdir/;
+    my $unzip_output = qx/unzip $ebooks_tempfile -d $ebooks_tmpdir/;
+    warn "UNZIP $ebooks_tempfile -d $ebooks_tmpdir RESULTS: $unzip_output";
     my $exit_code = $?;
     unless ( $exit_code == 0 ) {
         $errors->{'COVERS_UNZIP_FAIL'} = $ebooks_filename;
@@ -251,7 +253,7 @@ sub tool_step3 {
     my $tmp_dir = File::Temp::tempdir( CLEANUP => 1 );
 
     qx{mv $marc_file $pdfs_dir/.};
-    my $output = qx{/usr/local/bin/docker_run_liberty_uploader.sh $pdfs_dir $tmp_dir};
+    my $output = qx{sudo /usr/local/bin/docker_run_liberty_uploader.sh $pdfs_dir $tmp_dir};
     warn "LIBERTY UPLOADER OUTPUT: $output";
 
     warn "MARC FILE: $marc_file";

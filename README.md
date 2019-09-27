@@ -22,3 +22,12 @@ Once set up is complete you will need to alter your UseKohaPlugins system prefer
 
 Add `www-data = (root) NOPASSWD: /usr/local/bin/docker_run_liberty_uploader.sh` to sudoers as well as an alias for the script.
 
+In Apache, instead of disabling mpm-itk outright, you could simply disable its limits on sudo:
+
+<IfModule mpm_itk_module>
+    # Permit using "sudo"                             
+    LimitUIDRange 0 65534
+    LimitGIDRange 0 65534
+</IfModule>
+
+
