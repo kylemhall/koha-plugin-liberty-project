@@ -16,6 +16,8 @@ use C4::Biblio qw( AddBiblio );
 use MARC::Batch;
 use MARC::Record;
 
+use YAML qw( LoadFile DumpFile );
+
 ## Here we set our plugin version
 our $VERSION = "{VERSION}";
 
@@ -157,18 +159,12 @@ sub tool_step2 {
     my $ebooks_file     = $cgi->param('uploadEbooksFile');
     my $ebooks_filename = $cgi->param('uploadEbooksFile');
 
-    warn "MARC: $marc_file";
-    warn "COVES: $ebooks_file";
-
     my $ebooks_tmpdir = File::Temp::tempdir( CLEANUP => 0 );
     my $marc_tmpdir   = File::Temp::tempdir( CLEANUP => 0 );
-
-    warn "ebooks_tmpdir = $ebooks_tmpdir";
 
     # Write ebooks zip file to filesystem
     my ( $etfh, $ebooks_tempfile ) =
       File::Temp::tempfile( SUFFIX => '.zip', UNLINK => 0 );
-    warn "ebooks_tempfile = $ebooks_tempfile";
 
     $errors->{'COVERS_NOT_ZIP'} = 1 if ( $ebooks_filename !~ /\.zip$/i );
     $errors->{'NO_WRITE_TEMP'}       = 1 unless ( -w $ebooks_tmpdir );
@@ -187,7 +183,6 @@ sub tool_step2 {
 
     # Unzip ebooks zip file
     my $unzip_output = qx/unzip $ebooks_tempfile -d $ebooks_tmpdir/;
-    warn "UNZIP $ebooks_tempfile -d $ebooks_tmpdir RESULTS: $unzip_output";
     my $exit_code = $?;
     unless ( $exit_code == 0 ) {
         $errors->{'COVERS_UNZIP_FAIL'} = $ebooks_filename;
@@ -202,7 +197,6 @@ sub tool_step2 {
     # Write MARC file to filesystem
     my ( $mtfh, $marc_tempfile ) =
       File::Temp::tempfile( SUFFIX => '.mrc', UNLINK => 1 );
-    warn "marc_tempfile = $marc_tempfile";
 
     $errors->{'MARC_NOT_MRC'} = 1 if ( $marc_filename !~ /\.mrc$/i );
     $errors->{'NO_WRITE_TEMP'}     = 1 unless ( -w $marc_tmpdir );
@@ -225,7 +219,6 @@ sub tool_step2 {
     rename( $marc_tempfile, $new_file );
     $marc_tempfile = $new_file;
 
-    warn "CHECKING MARC: $marc_tempfile";
     my $records = $self->validate_marc( { file => $marc_tempfile, pdfs => $pdfs } );
 
     $template->param(
@@ -252,13 +245,11 @@ sub tool_step3 {
 
     my $tmp_dir = File::Temp::tempdir( CLEANUP => 1 );
 
-    qx{mv $marc_file $pdfs_dir/.};
-    my $output = qx{sudo /usr/local/bin/docker_run_liberty_uploader.sh $pdfs_dir $tmp_dir};
-    warn "LIBERTY UPLOADER OUTPUT: $output";
+    my $new_marc_file = "$pdfs_dir/marc.txt";
+    qx{mv $marc_file $new_marc_file};
+    $marc_file = $new_marc_file;
 
-    warn "MARC FILE: $marc_file";
-    warn "PDFS DIR: $pdfs_dir";
-
+    # Validate the PDFs before running the ACS uploader, it deletes the PDF files!
     my $pdfs = $self->validate_pdfs( { dir => $pdfs_dir, errors => $errors } );
 
     # Write MARC file to filesystem
@@ -271,26 +262,33 @@ sub tool_step3 {
     my $records = $self->validate_marc( { file => $marc_file, pdfs => $pdfs } );
 
     foreach my $record ( @$records ) {
-        warn "FOUND $record->{title} / $record->{isbn} : $record->{filename} => $record->{pdf}";
-
         if ( $record->{pdf}->{is_valid} ) {
-            warn "IMPORTING RECORD";
             my ( $biblionumber, $biblioitemnumber ) =
               AddBiblio( $record->{marc}, q{} );
             $record->{biblionumber} = $biblionumber;
-            warn "IMPORTED WITH BIBLIONUMBER $biblionumber";
         }
         else {
             warn "RECORD HAS INVALID PDF, SKIPPING IMPORT OF RECORD";
         }
-
-#        push( @records, $record );
     }
 
-    warn "UNLINK $marc_file";
+    # Run the ACS importer last, it deletes the PDF and MARC files
+    my $unixtime = time();
+    my $acsfile = "/tmp/$unixtime.acsfile";
+    DumpFile( $acsfile, { PDFS_DIR => $pdfs_dir, TMP_DIR => $tmp_dir } );
+    my $output;
+    while ( 1 ) {
+        sleep 1;
+        my $yaml = LoadFile( $acsfile );
+        last if $yaml->{DOCKER_OUTPUT}; 
+        $output = $yaml->{DOCKER_OUTPUT};
+    }
+    
+
     unlink $marc_file;
-    warn "REMOVE TREE $pdfs_dir";
+    unlink $acsfile;
     File::Path::remove_tree( $pdfs_dir );
+    File::Path::remove_tree( $tmp_dir );
 
     $template->param(
         step      => 3,
@@ -306,9 +304,6 @@ sub validate_marc {
     my $file = $args->{file}; 
     my $pdfs = $args->{pdfs};
 
-    warn "FILE: $file";
-    warn "PDFS: " . Data::Dumper::Dumper( $pdfs );
-
     my $batch = MARC::Batch->new( 'USMARC', $file );
     my @records;
     while ( my $marc = $batch->next ) {
@@ -317,12 +312,10 @@ sub validate_marc {
         $record->{isbn}  = $marc->subfield( '020', 'a' );
 
         my $filename = $record->{isbn} . ".pdf";
-        warn "FILENAME: $filename";
         $pdfs->{$filename}->{has_record} = 1;
 
         $record->{filename} = $filename;
         $record->{pdf}      = $pdfs->{$filename};
-        warn "FOUND $record->{title} / $record->{isbn} : $record->{filename} => $record->{pdf}";
 
         push( @records, $record );
     }
@@ -345,17 +338,14 @@ sub validate_pdfs {
         $pdfs->{$filename}->{filename}   = $filename;
         $pdfs->{$filename}->{has_record} = 0;
 
-        warn "FILENAME: $filename";
         my $output = qx|pdftotext $dir/$filename /dev/null|;
         if ($output) {
-            warn "PDF file $filename appears to be corrupted";
             $errors->{'PDF_INVALID'}->{$filename} = $output;
             $pdfs->{$filename}->{is_valid}        = 0;
             $pdfs->{$filename}->{is_valid_error}  = $output;
         }
         else {
             $pdfs->{$filename}->{is_valid} = 1;
-            warn "PDF file $filename appears to be cromulent!";
         }
     }
     closedir(DIR);
