@@ -26,15 +26,14 @@ use Data::Dumper;
 warn "PROCESSNG: " . Data::Dumper::Dumper( $data );
 
         my $PDFS_DIR = $data->{PDFS_DIR};
-        my $TMP_DIR  = $data->{TMP_DIR};
+warn "PDFS DIR: $PDFS_DIR";
 
-        my $output = qx{docker run -v $PDFS_DIR:/ORIGIN -v $TMP_DIR:/DESTINATION liberty-uploader};
+        my $output = qx{docker run -v $PDFS_DIR:/ORIGIN liberty-uploader};
 warn "OUTPUT: $output";
         DumpFile(
             $file,
             {
                 PDFS_DIR      => $PDFS_DIR,
-                TMP_DIR       => $TMP_DIR,
                 DOCKER_OUTPUT => $output
             }
         );

@@ -159,8 +159,8 @@ sub tool_step2 {
     my $ebooks_file     = $cgi->param('uploadEbooksFile');
     my $ebooks_filename = $cgi->param('uploadEbooksFile');
 
-    my $ebooks_tmpdir = File::Temp::tempdir( CLEANUP => 0 );
-    my $marc_tmpdir   = File::Temp::tempdir( CLEANUP => 0 );
+    my $ebooks_tmpdir = File::Temp::tempdir( TEMPLATE => '/tmp/ebooks_orig_XXXXX', CLEANUP => 0 );
+    my $marc_tmpdir   = File::Temp::tempdir( TEMPLATE => '/tmp/marc_orig_XXXXX', CLEANUP => 0 );
 
     # Write ebooks zip file to filesystem
     my ( $etfh, $ebooks_tempfile ) =
@@ -214,7 +214,7 @@ sub tool_step2 {
     close $mtfh;
 
     # Rename to prevent deletion
-    my $dir = File::Temp::tempdir( CLEANUP => 0 );
+    my $dir = File::Temp::tempdir( TEMPLATE => '/tmp/marc_dest_XXXXX', CLEANUP => 0 );
     my $new_file = "$dir/$marc_file";
     rename( $marc_tempfile, $new_file );
     $marc_tempfile = $new_file;
@@ -243,8 +243,6 @@ sub tool_step3 {
     my $marc_file = $cgi->param('marc_file');
     my $pdfs_dir  = $cgi->param('pdfs_dir');
 
-    my $tmp_dir = File::Temp::tempdir( CLEANUP => 1 );
-
     my $new_marc_file = "$pdfs_dir/marc.txt";
     qx{mv $marc_file $new_marc_file};
     $marc_file = $new_marc_file;
@@ -259,7 +257,19 @@ sub tool_step3 {
         exit;
     }
 
-    my $records = $self->validate_marc( { file => $marc_file, pdfs => $pdfs } );
+    # Run the ACS importer last, it deletes the PDF and MARC files
+    my $unixtime = time();
+    my $acsfile = "/tmp/$unixtime.acsfile";
+    DumpFile( $acsfile, { PDFS_DIR => $pdfs_dir } );
+    my $output;
+    while ( 1 ) {
+        sleep 1;
+        my $yaml = LoadFile( $acsfile );
+        last if $yaml->{DOCKER_OUTPUT}; 
+        $output = $yaml->{DOCKER_OUTPUT};
+    }
+
+    my $records = $self->validate_marc( { file => "$pdfs/uploadedMarcs.001", pdfs => $pdfs } );
 
     foreach my $record ( @$records ) {
         if ( $record->{pdf}->{is_valid} ) {
@@ -272,23 +282,8 @@ sub tool_step3 {
         }
     }
 
-    # Run the ACS importer last, it deletes the PDF and MARC files
-    my $unixtime = time();
-    my $acsfile = "/tmp/$unixtime.acsfile";
-    DumpFile( $acsfile, { PDFS_DIR => $pdfs_dir, TMP_DIR => $tmp_dir } );
-    my $output;
-    while ( 1 ) {
-        sleep 1;
-        my $yaml = LoadFile( $acsfile );
-        last if $yaml->{DOCKER_OUTPUT}; 
-        $output = $yaml->{DOCKER_OUTPUT};
-    }
-    
-
-    unlink $marc_file;
     unlink $acsfile;
     File::Path::remove_tree( $pdfs_dir );
-    File::Path::remove_tree( $tmp_dir );
 
     $template->param(
         step      => 3,
