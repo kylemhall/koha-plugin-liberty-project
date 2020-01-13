@@ -16,6 +16,8 @@ use MARC::Batch;
 use MARC::Record;
 
 use YAML qw( LoadFile DumpFile );
+use Try::Tiny;
+use JSON qw( to_json );
 
 ## Here we set our plugin version
 our $VERSION = "{VERSION}";
@@ -68,7 +70,11 @@ sub tool {
         $self->tool_step2();
     } elsif ( $step eq '3' ) {
         $self->tool_step3();
-    }
+    } elsif ( $step eq '4' ) {
+        $self->tool_step4();
+    } elsif ( $step eq 'check_processing' ) {
+	$self->check_processing();
+    } 
 
 }
 
@@ -234,16 +240,13 @@ sub tool_step2 {
 sub tool_step3 {
     my ( $self, $args ) = @_;
     my $cgi = $self->{'cgi'};
-warn "STEP 3 XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 
     my $errors = {};
 
-    my $template = $self->get_template( { file => 'tool-step2.tt' } );
+    my $template = $self->get_template( { file => 'tool-step3.tt' } );
 
     my $marc_file = $cgi->param('marc_file');
-warn "MARC FILE: $marc_file";
     my $pdfs_dir  = $cgi->param('pdfs_dir');
-warn "PDF DIR: $pdfs_dir";
 
     my $new_marc_file = "$pdfs_dir/marc.txt";
     qx{mv $marc_file $new_marc_file};
@@ -261,68 +264,99 @@ warn "PDF DIR: $pdfs_dir";
 
     # Run the ACS importer last, it deletes the PDF and MARC files
     my $unixtime = time();
-    my $acsfile = "/tmp/$unixtime.acsfile";
-    DumpFile( $acsfile, { PDFS_DIR => $pdfs_dir } );
-sleep 2;
-warn "ACS FILE CONTENT: " . `cat $acsfile`;
-    my $output;
-warn "WAITING FOR FILE TO PROCESS";
-# print $cgi->header('text/html');
-my $thr = threads->create('keepalive_httpd');
-    while ( 1 ) {
-warn "WAITING...";
-#print " ";
-        sleep 1;
-        my $yaml = LoadFile( $acsfile );
-        last if $yaml->{DOCKER_OUTPUT}; 
-        $output = $yaml->{DOCKER_OUTPUT};
-    }
-warn "FINISHED WAITING FOR FILE TO PROCESS";
-$thr->kill('KILL')->detach();
-
-    my $records = $self->validate_marc( { file => "$pdfs/uploadedMarcs.001", pdfs => $pdfs } );
-
-    foreach my $record ( @$records ) {
-        if ( $record->{pdf}->{is_valid} ) {
-            my ( $biblionumber, $biblioitemnumber ) =
-              AddBiblio( $record->{marc}, q{} );
-            $record->{biblionumber} = $biblionumber;
-        }
-        else {
-            warn "RECORD HAS INVALID PDF, SKIPPING IMPORT OF RECORD";
-        }
-    }
-
-#    unlink $acsfile;
-#    File::Path::remove_tree( $pdfs_dir );
+    my $acs_file = "/tmp/$unixtime.acsfile";
+    DumpFile( $acs_file, { PDFS_DIR => $pdfs_dir } );
 
     $template->param(
         step      => 3,
         errors    => $errors,
-        pdfs      => $pdfs,
+	marc_file => $marc_file,
+        pdfs_dir  => $pdfs_dir,
+        acs_file  => $acs_file,
+    );
+
+    $self->output_html( $template->output() );
+}
+
+sub tool_step4 {
+    my ( $self, $args ) = @_;
+    my $cgi = $self->{'cgi'};
+
+    my $errors = {};
+
+    my $template = $self->get_template( { file => 'tool-step2.tt' } );
+
+    my $pdfs_dir  = $cgi->param('pdfs_dir');
+warn "PDFS DIR: $pdfs_dir";
+    my $acs_file  = $cgi->param('acs_file');
+warn "ACS FILE: $acs_file";
+
+    my $records = $self->validate_marc( { file => "$pdfs_dir/uploadedMarcs.001" } );
+warn "VALIDATE MARC: " . Data::Dumper::Dumper( $records );
+
+    foreach my $record ( @$records ) {
+warn "IMPORT RECORD $record";
+        my ( $biblionumber, $biblioitemnumber ) = AddBiblio( $record->{marc}, q{} );
+        $record->{biblionumber} = $biblionumber;
+    }
+
+    unlink $acs_file;
+    File::Path::remove_tree( $pdfs_dir );
+
+    $template->param(
+        step      => 4,
+        errors    => $errors,
         records   => $records,
     );
-#print $template->output();
+
     $self->output_html( $template->output() );
+}
+
+sub check_processing {
+    my ( $self, $args ) = @_;
+    my $cgi = $self->{'cgi'};
+
+    my $acs_file  = $cgi->param('acs_file');
+
+    my $completed = 0;
+
+    try {
+        my $yaml = LoadFile( $acs_file );
+        $completed = 1 if $yaml && $yaml->{DOCKER_OUTPUT};
+    };
+
+    my $output = { completed => $completed };
+
+    print $cgi->header('application/json');
+    print to_json( $output );
 }
 
 sub validate_marc {
     my ( $self, $args ) = @_;
     my $file = $args->{file}; 
+warn "FILE: $file";
     my $pdfs = $args->{pdfs};
 
-    my $batch = MARC::Batch->new( 'USMARC', $file );
+    my $marc = qx/marc2xml $file | xml2marc/;
+warn "MARC: $marc";
+    open my $fh, "<", \$marc;
+
+    my $batch = MARC::Batch->new( 'USMARC', $fh );
+warn "BATCH: $batch";
     my @records;
     while ( my $marc = $batch->next ) {
+warn "RECORD: " . $marc->as_formatted;
         my $record = { marc => $marc };
         $record->{title} = $marc->subfield( '245', 'a' );
         $record->{isbn}  = $marc->subfield( '020', 'a' );
 
-        my $filename = $record->{isbn} . ".pdf";
-        $pdfs->{$filename}->{has_record} = 1;
+        if ( $pdfs ) {
+          my $filename = $record->{isbn} . ".pdf";
+          $pdfs->{$filename}->{has_record} = 1;
 
-        $record->{filename} = $filename;
-        $record->{pdf}      = $pdfs->{$filename};
+          $record->{filename} = $filename;
+          $record->{pdf}      = $pdfs->{$filename};
+        }
 
         push( @records, $record );
     }
@@ -374,16 +408,6 @@ Note: this is a wrapper function for C4::Output::output_with_http_headers
 sub output_html {
     my ( $self, $data, $status, $extra_options ) = @_;
     C4::Output::output_with_http_headers( $self->{cgi}, undef, $data, 'html', $status, $extra_options );
-}
-
-use threads;
-sub keepalive_httpd{
-    $SIG{'KILL'} = sub { threads->exit(); };
-    $| = 1;
-    do{
-        print ".\n";
-        sleep 1;
-    } while(1);
 }
 
 1;

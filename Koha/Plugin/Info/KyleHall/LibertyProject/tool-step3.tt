@@ -1,0 +1,73 @@
+[% INCLUDE 'doc-head-open.inc' %]
+ <title>Koha: Liberty Project Plugin: Example Tool</title>
+[% INCLUDE 'doc-head-close.inc' %]
+</head>
+<body>
+[% INCLUDE 'header.inc' %]
+[% INCLUDE 'cat-search.inc' %]
+
+<div id="breadcrumbs"><a href="/cgi-bin/koha/mainpage.pl">Home</a> &rsaquo; <a href="/cgi-bin/koha/plugins/plugins-home.pl">Plugins</a> &rsaquo; Liberty Project &rsaquo; Example Tool</div>
+
+<div id="doc3">
+
+<h2>Processing records...</h2>
+Your records are now processing in the background.<br/>
+Once this completes, a link to continue will display</br/>
+This processing may take a few minutes.</br>
+
+<div id="liberty-step4-continue"></div>
+
+<script>
+var acs_file = '[% acs_file %]';
+var pdfs_dir = '[% pdfs_dir %]';
+var check_processing_url = '/cgi-bin/koha/plugins/run.pl?class=Koha::Plugin::Info::KyleHall::LibertyProject&method=tool&step=check_processing&acs_file=';
+
+var i = 1;
+var intervalID = setInterval(function() {
+  $.getJSON( check_processing_url + acs_file, function( data ) {
+    console.log(`Fetching ${i}`);
+    console.log(data);
+    if ( ! data.completed ) {
+      $('#liberty-step4-continue').html(`Check ${i}: Processing...`);
+    } else {
+      console.log("COMPLETED!");
+      clearInterval(intervalID);
+      var link = `<a class="btn" href="/cgi-bin/koha/plugins/run.pl?class=Koha::Plugin::Info::KyleHall::LibertyProject&method=tool&step=4&acs_file=[% acs_file %]&pdfs_dir=[% pdfs_dir %]">Contine</a>`;
+      $('#liberty-step4-continue').html(`Complete!<p/>${link}`);
+    }
+
+    i++;
+  });
+}, 1000 * 5);
+
+</script>
+
+
+[% IF errors.keys %]
+    <h2>Errors:</h2>
+
+    <ul>
+        [% FOREACH e IN errors.keys %]
+            [% SWITCH e %]
+                [% CASE 'COVERS_NOT_ZIP' %]
+                    <li>Covers file is not a Zip file.</li>
+                [% CASE 'NO_WRITE_TEMP' %]
+                    <li>Unable to write to temp directory.</li>
+                [% CASE 'EMPTY_UPLOAD_COVERS' %]
+                    <li>Covers file is empty.</li>
+                [% CASE 'COVERS_UNZIP_FAIL' %]
+                    <li>Unzip of covers file failed.</li>
+                [% CASE 'PDF_INVALID' %]
+                    <li>One of more PDFs are invalide: <pre>[% errors.$e %]</pre></li>
+                [% CASE 'MARC_NOT_MRC' %]
+                    <li>MARC file does not end in <strong>.mrc</strong></li>
+                [% CASE 'EMPTY_UPLOAD_MARC' %]
+                    <li>MARC file is empty.</li>
+                [% CASE %] # default
+                    [% e %]
+            [% END %]
+        [% END %]
+    </ul>
+[% END %]
+
+[% INCLUDE 'intranet-bottom.inc' %]

@@ -43,9 +43,11 @@
         <tr>
             <th>Title</th>
             <th>ISBN</th>
-            <th>Filename</th>
-            <th>Valid file?</th>
-            [% IF step == 3 %]
+            [% IF step != 4 %]
+                <th>Filename</th>
+                <th>Valid file?</th>
+            [% END %]
+            [% IF step == 4 %]
                 <th>Imported?</th>
                 <th>Biblionumber</th>
             [% END %]
@@ -57,9 +59,11 @@
             <tr>
                 <td>[% r.title %]</td>
                 <td>[% r.isbn %]</td>
-                <td>[% r.filename %]</td>
-                <td>[% IF r.pdf.is_valid %]Yes[% ELSE %]No[% END %]</td>
-                [% IF step == 3 %]
+                [% IF step != 4 %]
+                    <td>[% r.filename %]</td>
+                    <td>[% IF r.pdf.is_valid %]Yes[% ELSE %]No[% END %]</td>
+                [% END %]
+                [% IF step == 4 %]
                     <td>[% IF r.biblionumber %]Yes[% ELSE %]No[% END %]</td>
                     <td>[% r.biblionumber %]</td>
                 [% END %]
@@ -68,6 +72,7 @@
     </tbody>
 </table>
 
+[% UNLESS step == 4 %]
 <h2>PDFs processed</h2>
 <table>
     <thead>
@@ -92,6 +97,7 @@
         [% END %]
     </tbody>
 </table>
+[% END %]
 
 <p/>
 
