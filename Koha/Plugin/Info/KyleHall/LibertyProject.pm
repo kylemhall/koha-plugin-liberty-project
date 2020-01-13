@@ -27,8 +27,8 @@ our $metadata = {
     author          => 'Kyle M Hall',
     date_authored   => '2009-01-27',
     date_updated    => "1900-01-01",
-    minimum_version => '18.05.00.000',
-    maximum_version => undef,
+    minimum_version => '16.05.07.000',
+    maximum_version => '16.99.99.999',
     version         => $VERSION,
     description     => 'This plugin implements every available feature '
       . 'of the plugin system and is meant '
