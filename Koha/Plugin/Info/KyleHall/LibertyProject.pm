@@ -1,5 +1,4 @@
 package Koha::Plugin::Info::KyleHall::LibertyProject;
-use Carp::Always;
 
 ## It's good practice to use Modern::Perl
 use Modern::Perl;
@@ -23,7 +22,7 @@ our $VERSION = "{VERSION}";
 
 ## Here is our metadata, some keys are required, some are optional
 our $metadata = {
-    name            => 'Libery Project Plugin',
+    name            => 'Liberty Project Plugin',
     author          => 'Kyle M Hall',
     date_authored   => '2009-01-27',
     date_updated    => "1900-01-01",
@@ -235,13 +234,16 @@ sub tool_step2 {
 sub tool_step3 {
     my ( $self, $args ) = @_;
     my $cgi = $self->{'cgi'};
+warn "STEP 3 XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 
     my $errors = {};
 
     my $template = $self->get_template( { file => 'tool-step2.tt' } );
 
     my $marc_file = $cgi->param('marc_file');
+warn "MARC FILE: $marc_file";
     my $pdfs_dir  = $cgi->param('pdfs_dir');
+warn "PDF DIR: $pdfs_dir";
 
     my $new_marc_file = "$pdfs_dir/marc.txt";
     qx{mv $marc_file $new_marc_file};
@@ -261,13 +263,22 @@ sub tool_step3 {
     my $unixtime = time();
     my $acsfile = "/tmp/$unixtime.acsfile";
     DumpFile( $acsfile, { PDFS_DIR => $pdfs_dir } );
+sleep 2;
+warn "ACS FILE CONTENT: " . `cat $acsfile`;
     my $output;
+warn "WAITING FOR FILE TO PROCESS";
+# print $cgi->header('text/html');
+my $thr = threads->create('keepalive_httpd');
     while ( 1 ) {
+warn "WAITING...";
+#print " ";
         sleep 1;
         my $yaml = LoadFile( $acsfile );
         last if $yaml->{DOCKER_OUTPUT}; 
         $output = $yaml->{DOCKER_OUTPUT};
     }
+warn "FINISHED WAITING FOR FILE TO PROCESS";
+$thr->kill('KILL')->detach();
 
     my $records = $self->validate_marc( { file => "$pdfs/uploadedMarcs.001", pdfs => $pdfs } );
 
@@ -282,8 +293,8 @@ sub tool_step3 {
         }
     }
 
-    unlink $acsfile;
-    File::Path::remove_tree( $pdfs_dir );
+#    unlink $acsfile;
+#    File::Path::remove_tree( $pdfs_dir );
 
     $template->param(
         step      => 3,
@@ -291,6 +302,7 @@ sub tool_step3 {
         pdfs      => $pdfs,
         records   => $records,
     );
+#print $template->output();
     $self->output_html( $template->output() );
 }
 
@@ -362,6 +374,16 @@ Note: this is a wrapper function for C4::Output::output_with_http_headers
 sub output_html {
     my ( $self, $data, $status, $extra_options ) = @_;
     C4::Output::output_with_http_headers( $self->{cgi}, undef, $data, 'html', $status, $extra_options );
+}
+
+use threads;
+sub keepalive_httpd{
+    $SIG{'KILL'} = sub { threads->exit(); };
+    $| = 1;
+    do{
+        print ".\n";
+        sleep 1;
+    } while(1);
 }
 
 1;
