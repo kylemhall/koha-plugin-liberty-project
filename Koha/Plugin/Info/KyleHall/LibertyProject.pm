@@ -291,6 +291,7 @@ sub tool_step3 {
     my $unixtime = time();
     my $acs_file = "/tmp/$unixtime.acsfile";
     DumpFile( $acs_file, { PDFS_DIR => $pdfs_dir } );
+    chmod 0777, $acs_file;
 
     $template->param(
         step      => 3,
