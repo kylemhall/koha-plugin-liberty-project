@@ -16,6 +16,7 @@ use File::Find::Rule;
 =cut
 
 sub worker {
+warn "STARTING";
     my @files = File::Find::Rule->file()->name('*.acsfile')->in('/tmp');
 
     foreach my $file (@files) {
@@ -28,7 +29,7 @@ warn "PROCESSNG: " . Data::Dumper::Dumper( $data );
         my $PDFS_DIR = $data->{PDFS_DIR};
 warn "PDFS DIR: $PDFS_DIR";
 
-        my $output = qx{docker run -v $PDFS_DIR:/ORIGIN liberty-uploader};
+        my $output = qx{docker run --rm -v $PDFS_DIR:/ORIGIN liberty-uploader};
 warn "OUTPUT: $output";
         DumpFile(
             $file,
