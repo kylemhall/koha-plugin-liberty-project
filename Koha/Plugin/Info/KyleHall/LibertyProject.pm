@@ -62,9 +62,11 @@ sub tool {
 
     my $cgi = $self->{'cgi'};
 
-    my $step = $cgi->param('step') || '1';
+    my $step = $cgi->param('step') || '0';
 
-    if ( $step eq '1' ) {
+    if ( $step eq '0' ) {
+	$self->tool_step0();
+    } elsif ( $step eq '1' ) {
         $self->tool_step1();
     } elsif ( $step eq '2' ) {
         $self->tool_step2();
@@ -142,22 +144,22 @@ sub uninstall() {
     return 1;
 }
 
-sub tool_step1 {
+sub tool_step0 {
     my ( $self, $args ) = @_;
     my $cgi = $self->{'cgi'};
 
-    my $template = $self->get_template( { file => 'tool-step1.tt' } );
+    my $template = $self->get_template( { file => 'tool-step0.tt' } );
 
     $self->output_html( $template->output() );
 }
 
-sub tool_step2 {
+sub tool_step1 {
     my ( $self, $args ) = @_;
     my $cgi = $self->{'cgi'};
 
     my $errors = {};
 
-    my $template = $self->get_template( { file => 'tool-step2.tt' } );
+    my $template = $self->get_template( { file => 'tool-step1.tt' } );
 
     my $marc_file       = $cgi->param('uploadMarcFile');
     my $marc_filename   = $cgi->param('uploadMarcFile');
@@ -165,15 +167,37 @@ sub tool_step2 {
     my $ebooks_filename = $cgi->param('uploadEbooksFile');
 
     my $ebooks_tmpdir = File::Temp::tempdir( TEMPLATE => '/tmp/ebooks_orig_XXXXX', CLEANUP => 0 );
-    my $marc_tmpdir   = File::Temp::tempdir( TEMPLATE => '/tmp/marc_orig_XXXXX', CLEANUP => 0 );
 
     # Write ebooks zip file to filesystem
     my ( $etfh, $ebooks_tempfile ) =
       File::Temp::tempfile( SUFFIX => '.zip', UNLINK => 0 );
 
+    while (<$ebooks_file>) {
+        print $etfh $_;
+    }
+    close $etfh;
+
     $errors->{'COVERS_NOT_ZIP'} = 1 if ( $ebooks_filename !~ /\.zip$/i );
     $errors->{'NO_WRITE_TEMP'}       = 1 unless ( -w $ebooks_tmpdir );
     $errors->{'EMPTY_UPLOAD_COVERS'} = 1 unless ( length($ebooks_file) > 0 );
+
+    # Write MARC file to filesystem
+    my ( $mtfh, $marc_tempfile ) =
+      File::Temp::tempfile( SUFFIX => '.mrc', UNLINK => 1 );
+
+    while (<$marc_file>) {
+        print $mtfh $_;
+    }
+    close $mtfh;
+
+    # Rename to prevent deletion
+    my $dir = File::Temp::tempdir( TEMPLATE => '/tmp/marc_dest_XXXXX', CLEANUP => 0 );
+    my $new_file = "$dir/$marc_file";
+    rename( $marc_tempfile, $new_file );
+    $marc_tempfile = $new_file;
+
+    $errors->{'MARC_NOT_MRC'} = 1 if ( $marc_filename !~ /\.mrc$/i );
+    $errors->{'EMPTY_UPLOAD_MARC'} = 1 unless ( length($marc_file) > 0 );
 
     if (%$errors) {
         $template->param( errors => $errors );
@@ -181,10 +205,29 @@ sub tool_step2 {
         exit;
     }
 
-    while (<$ebooks_file>) {
-        print $etfh $_;
-    }
-    close $etfh;
+    $template->param(
+        step      => 2,
+        errors    => $errors,
+	ebooks_tmpdir => $ebooks_tmpdir,
+	ebooks_tempfile => $ebooks_tempfile,
+        ebooks_filename => $ebooks_filename,
+	marc_tempfile => $marc_tempfile,
+    );
+    $self->output_html( $template->output() );
+}
+
+sub tool_step2 {
+    my ( $self, $args ) = @_;
+    my $cgi = $self->{'cgi'};
+
+    my $ebooks_tmpdir = $cgi->param('ebooks_tmpdir');
+    my $ebooks_tempfile = $cgi->param('ebooks_tempfile');
+    my $ebooks_filename = $cgi->param('ebooks_filename');
+    my $marc_tempfile = $cgi->param('marc_tempfile');
+
+    my $errors = {};
+
+    my $template = $self->get_template( { file => 'tool-step2.tt' } );
 
     # Unzip ebooks zip file
     my $unzip_output = qx/unzip $ebooks_tempfile -d $ebooks_tmpdir/;
@@ -199,30 +242,12 @@ sub tool_step2 {
     # Validate PDFs
     my $pdfs = $self->validate_pdfs( { dir => $ebooks_tmpdir, errors => $errors } );
 
-    # Write MARC file to filesystem
-    my ( $mtfh, $marc_tempfile ) =
-      File::Temp::tempfile( SUFFIX => '.mrc', UNLINK => 1 );
-
-    $errors->{'MARC_NOT_MRC'} = 1 if ( $marc_filename !~ /\.mrc$/i );
-    $errors->{'NO_WRITE_TEMP'}     = 1 unless ( -w $marc_tmpdir );
-    $errors->{'EMPTY_UPLOAD_MARC'} = 1 unless ( length($marc_file) > 0 );
 
     if (%$errors) {
         $template->param( errors => $errors );
         $self->output_html( $template->output() );
         exit;
     }
-
-    while (<$marc_file>) {
-        print $mtfh $_;
-    }
-    close $mtfh;
-
-    # Rename to prevent deletion
-    my $dir = File::Temp::tempdir( TEMPLATE => '/tmp/marc_dest_XXXXX', CLEANUP => 0 );
-    my $new_file = "$dir/$marc_file";
-    rename( $marc_tempfile, $new_file );
-    $marc_tempfile = $new_file;
 
     my $records = $self->validate_marc( { file => $marc_tempfile, pdfs => $pdfs } );
 

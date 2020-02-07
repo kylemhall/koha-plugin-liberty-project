@@ -9,18 +9,24 @@
 <div id="breadcrumbs"><a href="/cgi-bin/koha/mainpage.pl">Home</a> &rsaquo; <a href="/cgi-bin/koha/plugins/plugins-home.pl">Plugins</a> &rsaquo; Liberty Project &rsaquo; Example Tool</div>
 
 <div id="doc3">
-    <h2>Files uploaded!</h2>
-    <form method="post" id="upload_form">
+    <form method="post" enctype="multipart/form-data" id="upload_form">
         <fieldset class="rows">
             <input type="hidden" name="class" value="[% CLASS %]"/>
             <input type="hidden" name="method" value="[% METHOD %]"/>
 
-            <input name="ebooks_tmpdir" type="hidden" value="[% ebooks_tmpdir %]" />
-            <input name="ebooks_tempfile" type="hidden" value="[% ebooks_tempfile %]" />
-            <input name="ebooks_filename" type="hidden" value="[% ebooks_filename %]" />
-            <input name="marc_tempfile" type="hidden" value="[% marc_tempfile %]" />
+            <li class="required">
+                <label for="uploadMarcFile">MARC File: </label>
+                <input type="file" id="uploadMarcFile" name="uploadMarcFile" class="required" required="required" />
+                <span class="required">Required</span>
+            </li>
 
-            <input name="step" type="hidden" value="2" />
+            <li class="required">
+                <label for="uploadEbooksFile">E-books Zip File: </label>
+                <input type="file" id="uploadEbooksFile" name="uploadEbooksFile" class="required" required="required" />
+                <span class="required">Required</span>
+            </li>
+
+            <input name="step" type="hidden" value="1" />
             <input name="submitted" type="submit" value="Validate files" />
         </fieldset>
     </form>
